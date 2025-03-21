@@ -164,3 +164,70 @@ Refactoring diperlukan agar kode menjadi lebih terstruktur, mudah dibaca, dan di
 ![Commit 3 screen capture](/assets/images/commit3.png)
 ```
 
+# Refleksi: Milestone 4 - Simulasi Respons Lambat  
+
+Pada milestone ini, saya belajar bagaimana server yang berjalan pada satu thread dapat menyebabkan keterlambatan dalam menangani permintaan jika ada proses yang memakan waktu lama. Dengan memahami bagaimana Rust menangani koneksi menggunakan `TcpStream`, saya mendapatkan wawasan mengenai pentingnya concurrency dalam pengembangan server web.  
+
+## **Pemahaman tentang Masalah Respons Lambat**  
+Fungsi `handle_connection` kini memiliki tambahan fitur di mana jika pengguna mengakses `/sleep`, server akan menunda respons selama 10 detik menggunakan `thread::sleep(Duration::from_secs(10))`.  
+
+### **Bagaimana Server Menangani Permintaan**  
+- Jika pengguna mengakses `/`, server langsung mengembalikan `hello.html` dengan status `200 OK`.  
+- Jika pengguna mengakses `/sleep`, server menunda respons selama 10 detik sebelum mengembalikan `hello.html`.  
+- Jika pengguna mengakses halaman yang tidak tersedia, server mengembalikan `404.html` dengan status `404 NOT FOUND`.  
+
+### **Dampak pada Performa Server**  
+- Karena server berjalan dalam satu thread, semua permintaan ditangani satu per satu.  
+- Jika satu permintaan membutuhkan waktu lama, seperti pada `/sleep`, maka permintaan lain yang masuk akan tertunda hingga permintaan sebelumnya selesai.  
+- Dalam eksperimen dengan membuka dua tab browser, satu untuk `/sleep` dan satu untuk `/`, saya melihat bahwa tab kedua juga mengalami penundaan hingga permintaan `/sleep` selesai diproses.  
+
+## **Mengapa Multithreading Diperlukan?**  
+Eksperimen ini menunjukkan bahwa tanpa multithreading, server tidak bisa menangani banyak permintaan secara efisien. Jika server digunakan oleh banyak pengguna sekaligus, pengalaman pengguna akan buruk karena semua permintaan akan diproses secara berurutan. Oleh karena itu, solusi seperti **thread pool** diperlukan agar server bisa menangani banyak permintaan secara paralel tanpa harus menunggu satu permintaan selesai sebelum memproses yang lain.  
+
+## **Kesimpulan**  
+Dari milestone ini, saya belajar bahwa server berbasis single-thread memiliki keterbatasan dalam menangani banyak koneksi sekaligus. Dengan menambahkan simulasi respons lambat menggunakan `thread::sleep`, saya memahami bagaimana satu permintaan yang memakan waktu lama dapat memblokir permintaan lainnya. Untuk mengatasi masalah ini, solusi seperti multithreading atau async programming sangat diperlukan dalam pengembangan server web yang lebih skalabel dan responsif.  
+
+## **Kode Program**  
+Berikut adalah kode yang telah dimodifikasi untuk menangani permintaan `/sleep` dengan simulasi respons lambat:  
+
+```rust
+use std::{
+    fs,
+    io::{prelude::*, BufReader},
+    net::{TcpListener, TcpStream},
+    thread,
+    time::Duration,
+};
+
+fn main() {
+    let listener = TcpListener::bind("127.0.0.1:7878").unwrap();
+
+    for stream in listener.incoming() {
+        let stream = stream.unwrap();
+        handle_connection(stream);
+    }
+}
+
+fn handle_connection(mut stream: TcpStream) {
+    let buf_reader = BufReader::new(&mut stream);
+    let request_line = buf_reader.lines().next().unwrap().unwrap();
+
+    let (status_line, filename) = match &request_line[..] {
+        "GET / HTTP/1.1" => ("HTTP/1.1 200 OK", "hello.html"),
+        "GET /sleep HTTP/1.1" => {
+            thread::sleep(Duration::from_secs(10));
+            ("HTTP/1.1 200 OK", "hello.html")
+        }
+        _ => ("HTTP/1.1 404 NOT FOUND", "404.html"),
+    };
+
+    let contents = fs::read_to_string(filename).unwrap();
+    let response = format!(
+        "{}\r\nContent-Length: {}\r\n\r\n{}",
+        status_line,
+        contents.len(),
+        contents
+    );
+
+    stream.write_all(response.as_bytes()).unwrap();
+}
