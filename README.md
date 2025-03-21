@@ -1,4 +1,4 @@
-# Refleksi: Membangun Web Server Sederhana dengan Rust
+# Refleksi: Milestone 1 - Single threaded web server
 
 ## Pendahuluan
 Dalam tutorial ini, kita telah mempelajari cara menginisialisasi repository Git, mengatur proyek Rust, dan membuat server web sederhana menggunakan `TcpListener` dari pustaka standar Rust. Proses ini memberikan wawasan tentang bagaimana koneksi TCP dapat digunakan untuk menangani permintaan dari browser.
@@ -112,3 +112,55 @@ Dalam proses menjalankan kode ini, saya menghadapi beberapa tantangan, di antara
 ```markdown
 ![Commit 2 screen capture](/assets/images/commit2.png)
 ```
+
+# Refleksi: Milestone 3 - Validating request and selectively responding
+
+Pada milestone ini, saya belajar bagaimana sebuah program Rust dapat mengembalikan halaman HTML melalui koneksi TCP serta melakukan validasi permintaan untuk memberikan respons yang sesuai. Dengan memahami cara kerja fungsi `handle_connection`, saya mendapatkan wawasan tentang dasar-dasar HTTP dan bagaimana server web sederhana dapat dibuat menggunakan Rust.
+
+## **Pemahaman tentang handle_connection**
+Fungsi `handle_connection` bertanggung jawab untuk membaca permintaan dari klien dan merespons dengan file HTML yang telah disediakan. Beberapa konsep penting yang saya pelajari dari kode ini meliputi:
+
+1. **Membaca Permintaan HTTP**
+   - Program menggunakan `BufReader` untuk membaca data dari `TcpStream`.
+   - Menggunakan `.lines()` untuk mendapatkan setiap baris dari permintaan HTTP.
+   - Menggunakan `.take_while(|line| !line.is_empty())` untuk hanya membaca bagian header permintaan.
+
+2. **Menyusun Respons HTTP**
+   - Respons HTTP terdiri dari:
+     - **Status Line**: `HTTP/1.1 200 OK` menandakan bahwa permintaan berhasil.
+     - **Header**: `Content-Length` untuk menentukan panjang konten yang dikirim.
+     - **Body**: Isi dari `hello.html` yang akan ditampilkan di browser.
+   - Menggunakan `fs::read_to_string("hello.html")` untuk membaca file HTML dan menyisipkannya dalam respons.
+   - Menggunakan `format!()` untuk membangun respons lengkap sebelum dikirim ke klien menggunakan `stream.write_all(response.as_bytes()).unwrap();`.
+
+## **Menangani Permintaan yang Tidak Valid**
+Sebelumnya, server hanya mengembalikan `hello.html` untuk semua permintaan. Namun, dalam aplikasi web yang lebih realistis, server harus dapat merespons dengan halaman "404 Not Found" jika permintaan tidak sesuai dengan halaman yang tersedia.
+
+Untuk itu, saya memodifikasi `handle_connection` agar dapat memeriksa permintaan yang diterima dan memberikan respons yang sesuai:
+
+1. **Mengekstrak Permintaan dari HTTP Request**
+   - Menggunakan `.lines().next()` untuk mendapatkan baris pertama dari permintaan HTTP.
+   - Mengekstrak path dari request untuk menentukan halaman yang diminta.
+
+2. **Memilih Respons yang Sesuai**
+   - Jika path adalah `/`, server mengirimkan `hello.html` dengan status `HTTP/1.1 200 OK`.
+   - Jika path bukan yang dikenali, server mengembalikan halaman `404.html` dengan status `HTTP/1.1 404 NOT FOUND`.
+
+## **Mengapa Refactoring Diperlukan?**
+Refactoring diperlukan agar kode menjadi lebih terstruktur, mudah dibaca, dan diperluas di masa depan. Beberapa perbaikan yang dilakukan:
+
+1. **Memisahkan logika pembacaan permintaan dari pembuatan respons.**
+   - Sebelumnya, semua logika ada dalam satu fungsi besar.
+   - Sekarang, ada pemisahan antara membaca request dan menentukan respons.
+
+2. **Menghindari duplikasi kode.**
+   - Respons HTTP dibangun dengan format yang serupa, sehingga lebih baik dibuat sebagai fungsi terpisah.
+
+3. **Meningkatkan skalabilitas.**
+   - Dengan struktur ini, akan lebih mudah menambahkan halaman baru di masa depan.
+
+
+```markdown
+![Commit 3 screen capture](/assets/images/commit3.png)
+```
+
