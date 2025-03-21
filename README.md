@@ -231,3 +231,107 @@ fn handle_connection(mut stream: TcpStream) {
 
     stream.write_all(response.as_bytes()).unwrap();
 }
+
+# Refleksi: Milestone 5 - Server Multithreaded  
+
+Pada milestone ini, saya belajar bagaimana menerapkan **multithreading** pada server agar dapat menangani banyak permintaan secara paralel. Dengan menggunakan **ThreadPool**, server tidak lagi bekerja dalam satu thread saja, sehingga performanya meningkat dibandingkan dengan server single-threaded pada milestone sebelumnya.  
+
+## **Pemahaman tentang ThreadPool**  
+ThreadPool adalah sekumpulan thread yang dapat digunakan kembali untuk mengeksekusi tugas-tugas secara paralel tanpa perlu membuat thread baru setiap kali ada permintaan baru.  
+
+Dengan adanya ThreadPool, server dapat menangani banyak koneksi sekaligus, sehingga jika ada permintaan yang memerlukan waktu lama (seperti `/sleep`), permintaan lain tidak perlu menunggu hingga proses tersebut selesai.  
+
+## **Cara Kerja ThreadPool dalam Server Ini**  
+1. **Membuat ThreadPool**  
+   - Pada fungsi `main`, `ThreadPool::new(4)` membuat pool dengan 4 worker threads.  
+   - Ini berarti server dapat menangani hingga 4 koneksi secara bersamaan.  
+
+2. **Menangani Koneksi dengan Multithreading**  
+   - Saat ada permintaan masuk, server tidak langsung menangani koneksi di thread utama.  
+   - Sebaliknya, permintaan tersebut dikirim ke ThreadPool menggunakan `pool.execute(|| { handle_connection(stream); });`.  
+   - Salah satu worker dalam pool akan mengambil tugas ini dan menjalankan `handle_connection`.  
+
+3. **Mekanisme Sinkronisasi dengan Arc dan Mutex**  
+   - Karena banyak thread bekerja bersama, kita perlu memastikan bahwa mereka dapat berbagi tugas tanpa konflik.  
+   - `Arc<Mutex<mpsc::Receiver<Job>>>` digunakan agar beberapa worker dapat menerima dan mengeksekusi pekerjaan secara aman.  
+   - `Arc` (Atomic Reference Counted) memungkinkan beberapa thread untuk memiliki kepemilikan bersama terhadap receiver.  
+   - `Mutex` (Mutual Exclusion) memastikan hanya satu thread yang mengakses receiver dalam satu waktu.  
+
+4. **Menutup Worker dengan Graceful Shutdown**  
+   - Ketika server dimatikan, semua worker di dalam pool akan ditutup dengan `drop(self.sender.take());`.  
+   - Setiap worker akan memproses semua pekerjaan yang tersisa sebelum keluar dari loop.  
+   - Jika ada worker yang masih berjalan, mereka akan **join** ke thread utama sebelum program berakhir.  
+
+## **Perbedaan dengan Server Single-Threaded (Milestone 4)**  
+| **Fitur**            | **Single-Threaded Server** | **Multithreaded Server** |
+|----------------------|--------------------------|--------------------------|
+| **Jumlah Thread**    | 1                         | Bisa lebih dari 1 (sesuai ukuran pool) |
+| **Responsiveness**   | Lambat jika ada permintaan berat seperti `/sleep` | Tetap responsif karena permintaan ditangani secara paralel |
+| **Scalability**      | Tidak bisa menangani banyak pengguna sekaligus | Bisa menangani lebih banyak permintaan secara simultan |
+| **Implementasi**     | Langsung memproses permintaan di thread utama | Memanfaatkan ThreadPool untuk mendistribusikan pekerjaan ke beberapa thread |
+
+## **Hasil Eksperimen**  
+Setelah menjalankan server ini, saya mencoba membuka dua tab browser:  
+1. Tab pertama mengakses `127.0.0.1/sleep`, yang akan menunda respons selama 10 detik.  
+2. Tab kedua mengakses `127.0.0.1/`.  
+
+Pada server **single-threaded** (milestone 4), tab kedua harus menunggu hingga permintaan `/sleep` selesai sebelum mendapatkan respons.  
+Namun, pada server **multithreaded** ini, tab kedua langsung mendapatkan respons meskipun tab pertama sedang menunggu.  
+
+## **Kesimpulan**  
+- Multithreading membuat server lebih **efisien dan responsif** dalam menangani banyak permintaan.  
+- Dengan **ThreadPool**, server tidak perlu membuat thread baru setiap kali ada permintaan, sehingga lebih **hemat sumber daya**.  
+- **Sinkronisasi menggunakan Arc dan Mutex** memastikan bahwa worker dapat berbagi tugas dengan aman.  
+- Ini adalah dasar dari bagaimana **web server modern** bekerja, di mana mereka menangani ribuan permintaan per detik dengan efisien.  
+
+## **Kode Program**  
+Berikut adalah kode yang telah dimodifikasi untuk mendukung multithreading menggunakan **ThreadPool**:  
+
+### **`main.rs`**
+```rust
+use advprog_tutorial6::ThreadPool;
+use std::{
+    fs,
+    io::{prelude::*, BufReader},
+    net::{TcpListener, TcpStream},
+    thread,
+    time::Duration,
+};
+
+fn main() {
+    let listener = TcpListener::bind("127.0.0.1:7878").unwrap();
+    let pool = ThreadPool::new(4);
+
+    for stream in listener.incoming() {
+        let stream = stream.unwrap();
+
+        pool.execute(|| {
+            handle_connection(stream);
+        });
+    }
+
+    println!("Shutting down.");
+}
+
+fn handle_connection(mut stream: TcpStream) {
+    let buf_reader = BufReader::new(&stream);
+    let request_line = buf_reader.lines().next().unwrap().unwrap();
+
+    let (status_line, filename) = match &request_line[..] {
+        "GET / HTTP/1.1" => ("HTTP/1.1 200 OK", "hello.html"),
+        "GET /sleep HTTP/1.1" => {
+            thread::sleep(Duration::from_secs(10));
+            ("HTTP/1.1 200 OK", "hello.html")
+        }
+        _ => ("HTTP/1.1 404 NOT FOUND", "404.html"),
+    };
+
+    let contents = fs::read_to_string(filename).unwrap();
+    let length = contents.len();
+
+    let response =
+        format!("{status_line}\r\nContent-Length: {length}\r\n\r\n{contents}");
+
+    stream.write_all(response.as_bytes()).unwrap();
+}
+
