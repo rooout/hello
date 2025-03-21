@@ -335,3 +335,28 @@ fn handle_connection(mut stream: TcpStream) {
     stream.write_all(response.as_bytes()).unwrap();
 }
 
+# **Refleksi: (Bonus) Function Improvement**  
+
+Pada milestone ini, saya melakukan peningkatan pada kode dengan mengganti metode `new` pada `ThreadPool` menjadi `build`, serta menambahkan mekanisme error handling jika ukuran thread pool tidak valid.  
+
+## **Perbedaan antara `new` dan `build`**  
+Sebelumnya, `ThreadPool::new(size)` digunakan untuk membuat thread pool tanpa mekanisme validasi. Jika pengguna memberikan ukuran `size = 0`, kode tetap berjalan tetapi tidak memiliki worker, yang bisa menyebabkan error di runtime.  
+
+Sekarang, `ThreadPool::build(size)` digunakan sebagai pengganti, dengan perubahan berikut:  
+
+1. **Error Handling**  
+   - Jika `size == 0`, fungsi `build` mengembalikan `Err(PoolCreationError)`, sehingga program dapat menangani kasus ini sebelum terjadi error yang sulit dilacak.  
+   - Ini mencegah thread pool dibuat dalam keadaan yang tidak valid.  
+
+2. **Pola Pembuatan yang Lebih Aman**  
+   - `build` mengembalikan `Result<ThreadPool, PoolCreationError>`, sehingga memaksa pengguna untuk menangani kemungkinan error saat membuat pool.  
+   - Sebelumnya, `new` langsung mengembalikan `ThreadPool` tanpa mekanisme validasi.  
+
+## **Peningkatan pada `main.rs`**  
+- **Perubahan utama**: Menggunakan `ThreadPool::build(4).unwrap();` alih-alih `ThreadPool::new(4);`.  
+- **Keuntungan**: Jika `build` gagal, program bisa menangani error dengan baik daripada langsung panic.  
+
+## **Kesimpulan**  
+- Refactoring ini membuat kode lebih **robust** dan **aman** dari error yang tidak terduga.  
+- Dengan mekanisme validasi di `build`, kita dapat mencegah penggunaan ukuran thread pool yang tidak valid sejak awal.  
+- Ini merupakan praktik **error handling yang lebih baik** dalam Rust, yang membantu membuat program lebih **reliable dan maintainable**.
