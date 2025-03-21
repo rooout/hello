@@ -73,3 +73,42 @@ Informasi ini menunjukkan bahwa browser melakukan permintaan `GET` ke root path 
 
 ### 5. Tantangan dan Perbaikan
 Saat menjalankan program, terdapat peringatan unused variable `stream`. Hal ini dapat diperbaiki dengan mengganti nama variabel menjadi `_stream` untuk menunjukkan bahwa variabel tidak digunakan secara eksplisit. Selain itu, jika server tidak dihentikan dengan `Ctrl + C`, program akan gagal dijalankan kembali karena port masih terikat oleh proses sebelumnya.
+
+
+# Refleksi: Milestone 2 - Returning HTML
+
+Pada milestone ini, saya belajar bagaimana sebuah program Rust dapat mengembalikan halaman HTML melalui koneksi TCP. Dengan memahami cara kerja fungsi `handle_connection`, saya mendapatkan wawasan tentang dasar-dasar HTTP dan bagaimana server web sederhana dapat dibuat menggunakan Rust.
+
+## **Pemahaman tentang handle_connection**
+Fungsi `handle_connection` bertanggung jawab untuk membaca permintaan dari klien dan merespons dengan file HTML yang telah disediakan. Beberapa konsep penting yang saya pelajari dari kode ini meliputi:
+
+1. **Membaca Permintaan HTTP**
+   - Program menggunakan `BufReader` untuk membaca data dari `TcpStream`.
+   - Menggunakan `.lines()` untuk mendapatkan setiap baris dari permintaan HTTP.
+   - Menggunakan `.take_while(|line| !line.is_empty())` untuk hanya membaca bagian header permintaan.
+
+2. **Menyusun Respons HTTP**
+   - Respons HTTP terdiri dari:
+     - **Status Line**: `HTTP/1.1 200 OK` menandakan bahwa permintaan berhasil.
+     - **Header**: `Content-Length` untuk menentukan panjang konten yang dikirim.
+     - **Body**: Isi dari `hello.html` yang akan ditampilkan di browser.
+   - Menggunakan `fs::read_to_string("hello.html")` untuk membaca file HTML dan menyisipkannya dalam respons.
+   - Menggunakan `format!()` untuk membangun respons lengkap sebelum dikirim ke klien menggunakan `stream.write_all(response.as_bytes()).unwrap();`.
+
+## **Kesalahan dan Pembelajaran Penting**
+Dalam proses menjalankan kode ini, saya menghadapi beberapa tantangan, di antaranya:
+
+1. **Error karena karakter non-UTF-8 dalam permintaan HTTP**
+   - Menggunakan `.unwrap()` pada `.lines()` bisa menyebabkan crash jika permintaan HTTP memiliki karakter non-UTF-8.
+   - Solusi: Menggunakan `from_utf8_lossy()` untuk menangani karakter yang tidak valid.
+
+2. **Kesalahan dalam menentukan lokasi file `hello.html`**
+   - File harus berada dalam direktori yang sama dengan program agar dapat ditemukan oleh `fs::read_to_string`.
+
+3. **Menjalankan ulang server setelah perubahan kode**
+   - Harus memastikan bahwa server lama telah dihentikan sebelum menjalankan `cargo run` kembali.
+
+
+```markdown
+![Commit 2 screen capture](/assets/images/commit2.png)
+```
